@@ -4,11 +4,8 @@ import time
 import threading
 import zlib
 from collections import namedtuple
-from pathlib import Path
-
 import requests
 import websocket
-from openpyxl import Workbook, load_workbook
 
 HEADER_STRUCT = struct.Struct('>I2H2I')
 # 大端 >
@@ -22,22 +19,9 @@ class Spider(object):
     def __init__(self):
         self.ws = websocket.create_connection('wss://broadcastlv.chat.bilibili.com:443/sub')
         self.uid = 10
-        self.room_id = 764155
+        self.room_id = 68808
 
-    #     url上的地址可能为短id，需要解析为真实的房间id
-    def get_real_room_id(self):
-        res = requests.get(
-            'https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom?room_id={}'.format(self.room_id))
-        data = res.json()
-        try:
-            room_info = data['data']['room_info']
-            room_id = room_info['room_id']
-            return room_id
-        except Exception as e:
-            print(e)
-            return self.room_id
-
-    # 解包
+    # 消息处理
     def _handle_message(self, data):
         offset = 0
         while offset < len(data):
@@ -63,15 +47,25 @@ class Spider(object):
                             user = info[2][1]
                             msg = info[1]
                             print(user, '：', msg)
-                            self.writeExcel(user, msg)
+                      
                         #     礼物
                         if body['cmd'] == 'SEND_GIFT':
                             data = body['data']
                             user = data['uname']
+                            uid = data['uid']
                             num = data['num']
                             giftName = data['giftName']
                             action = data['action']
-                            print(user, '\t', action, '\t', giftName, '\t', num, '个')
+                            coin_type = data['coin_type']
+                            price = data['price']
+                            # coin_type silver-银瓜子 glod-金瓜子
+                      
+                        
+                            print('感谢\t', user, '\t', action, '\t的', num, '个', giftName)
+                        if body['cmd'] == 'INTERACT_WORD':
+                            data = body['data']
+                          
+                            print('欢迎\t{}({})\t进入直播间'.format(data['uname'], data['uid']))
                     except Exception as e:
                         print(e)
                         raise
@@ -95,7 +89,7 @@ class Spider(object):
     def login(self):
         auth_params = {
             'uid': self.uid,
-            'roomid': self.get_real_room_id(),
+            'roomid': self.room_id,
             'protover': 2,
             'type': 2,
             'platform': 'web',
@@ -126,27 +120,12 @@ class Spider(object):
         """
         while True:
             try:
-                print('心跳')
+                print('心跳\n')
                 self.ws.send(self.make_packet({}, 2))
                 time.sleep(30)
             except Exception as e:
                 print(e)
                 exit(1)
-
-    # 保存到excel
-    def writeExcel(self, nick, msg):
-        excel = Path(str(self.get_real_room_id()) + '.xlsx').exists()
-        # 文件存在，直接打开
-        if excel:
-            wb = load_workbook(str(self.get_real_room_id()) + '.xlsx')
-            sheet = wb.active
-        # 不存在，新建
-        else:
-            wb = Workbook()
-            sheet = wb.active
-            sheet.append(['昵称', '弹幕', '发送时间'])
-        sheet.append([nick, msg, time.strftime('%y-%m-%d %H:%M:%S')])
-        wb.save(str(self.get_real_room_id()) + '.xlsx')
 
 
 if __name__ == '__main__':
